@@ -1,0 +1,16 @@
+{
+  "name": "accessdb-parser",
+  "version": "1.0.0",
+  "description": "A pure javascript Microsoft AccessDB files (.mdb, .accdb) parser",
+  "main": "lib/ index.js",
+  "types": "lib", 
+  "scripts": {
+    "build": "tsc -p ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^4.0.2"
+  }
+}
