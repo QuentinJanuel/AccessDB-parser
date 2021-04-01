@@ -49,13 +49,17 @@ export const parseType = function (dataType: DataType, buffer: Buffer, length?: 
 		break;
 		case DataType.DateTime:
 			const daysPassed = Math.floor(buffer.readDoubleLE(0));
+			// ms access expresses hours in decimals
+			const hoursPassedDecimal = buffer.readDoubleLE(0) % 1
+			const hours = Math.floor(hoursPassedDecimal * 24)
+			const minutes = Math.floor(((hoursPassedDecimal * 24) % 1) * 60)
+			const seconds = Math.floor(((((hoursPassedDecimal * 24) % 1) * 60) % 1) * 60)
 			const date = new Date("1899/12/30");
 			date.setHours(12, 0, 0, 0);
 			date.setDate(date.getDate() + daysPassed);
-			const day = date.getDate();
-			const month = date.getMonth() + 1;
-			const year = date.getFullYear();
-			parsed = `${day < 10 ? "0" : "" }${ day }/${ month < 10 ? "0" : "" }${ month }/${ year }`;
+			date.setHours(hours,minutes,seconds)
+            		// todo check TIME ZONE
+			parsed = date.toISOString()
 			break;
 		case DataType.Binary:
 			parsed = buffer.slice(0, length).toString("utf8"); // Maybe
