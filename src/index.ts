@@ -426,7 +426,7 @@ class AccessTable {
 		const nullTable: Array<boolean> = [];
 		if (nullTableLen && nullTableLen < originalRecord.length) {
 			const nullTableBuffer = record.slice(nullTableLen === 0 ? 0 : record.length - nullTableLen);
-			for (let i = 0; i < nullTable.length * 8; ++i)
+			for (let i = 0; i < nullTableBuffer.length * 8; ++i)
 				nullTable.push(((nullTableBuffer[Math.floor(i / 8)]) & (1 << (i % 8) >>> 0) >>> 0) !== 0); // CHECK MOD
 		} else {
 			throw new Error(`Failed to parse null table column count ${this.tableHeader.columnCount}`);
