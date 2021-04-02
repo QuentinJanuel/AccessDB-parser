@@ -1,4 +1,4 @@
-import { categorizePages, DataType, parseType } from "./utils";
+import { categorizePages, DataType, parseType } from './utils';
 import {
   ACCESSHEADER,
   TDEF_HEADER,
@@ -7,8 +7,8 @@ import {
   parseTableHead,
   parseTableData,
   parseRelativeObjectMetadataStruct,
-} from "./parsing-primitives";
-import { Dico } from "./types";
+} from './parsing-primitives';
+import { Dico } from './types';
 
 const PAGE_SIZE_V3 = 0x800;
 const PAGE_SIZE_V4 = 0x1000;
@@ -63,7 +63,7 @@ export class AccessParser {
     this.parseFileHeader();
     [this.tableDefs, this.dataPages /*this.allPages*/] = categorizePages(
       this.dbData,
-      this.pageSize
+      this.pageSize,
     );
     this.tablesWithData = this.linkTablesToData();
     this.catalog = this.parseCatalog();
@@ -74,7 +74,7 @@ export class AccessParser {
       head = ACCESSHEADER.parse(this.dbData);
     } catch {
       throw new Error(
-        "Failed to parse DB file header. Check it is a valid file header"
+        'Failed to parse DB file header. Check it is a valid file header',
       );
     }
     const version = head.jetVersion;
@@ -86,7 +86,7 @@ export class AccessParser {
       this.pageSize = PAGE_SIZE_V4;
     } else if (version !== VERSION_3) {
       throw new Error(
-        `Unknown database version ${version} Trying to parse database as version 3`
+        `Unknown database version ${version} Trying to parse database as version 3`,
       );
     }
   }
@@ -111,7 +111,7 @@ export class AccessParser {
         if (!Object.keys(tablesWithData).includes(pageOffset.toString()))
           tablesWithData[pageOffset] = new TableObject(
             pageOffset,
-            tablePageValue
+            tablePageValue,
           );
         tablesWithData[pageOffset]!.linkedPages.push(data);
       }
@@ -125,24 +125,24 @@ export class AccessParser {
       this.version,
       this.pageSize,
       this.dataPages,
-      this.tableDefs
+      this.tableDefs,
     );
     const catalog = accessTable.parse();
     const tablesMapping: Dico<number> = {};
     let i = -1;
-    const names: Array<string> = catalog["Name"] as any;
-    const types: Array<number> = catalog["Type"] as any;
-    const flags: Array<number> = catalog["Flags"] as any;
-    const ids: Array<number> = catalog["Id"] as any;
+    const names: Array<string> = catalog['Name'] as any;
+    const types: Array<number> = catalog['Type'] as any;
+    const flags: Array<number> = catalog['Flags'] as any;
+    const ids: Array<number> = catalog['Id'] as any;
     if (
       names === undefined ||
       types === undefined ||
       flags === undefined ||
       ids === undefined
     )
-      throw new Error("The catalog is missing required fields");
+      throw new Error('The catalog is missing required fields');
     for (const tableName of names) {
-      if (typeof tableName !== "string") continue;
+      if (typeof tableName !== 'string') continue;
       i += 1;
       const tableType = 1;
       if (types[i] === tableType) {
@@ -166,10 +166,10 @@ export class AccessParser {
       const tableDef = this.tableDefs[tableOffset];
       if (tableDef === undefined) {
         throw new Error(
-          `Could not find table ${tableName} offset ${tableOffset}`
+          `Could not find table ${tableName} offset ${tableOffset}`,
         );
       } else {
-        throw new Error("Empty table");
+        throw new Error('Empty table');
         // table = new TableObject(tableOffset, tableDef);
       }
     }
@@ -178,7 +178,7 @@ export class AccessParser {
       this.version,
       this.pageSize,
       this.dataPages,
-      this.tableDefs
+      this.tableDefs,
     );
     return accessTable.parse();
   }
@@ -208,7 +208,7 @@ export class AccessParser {
 }
 
 type PropType<TObj, TProp extends keyof TObj> = TObj[TProp];
-type Column = PropType<ReturnType<typeof parseTableData>, "column">[0] & {
+type Column = PropType<ReturnType<typeof parseTableData>, 'column'>[0] & {
   colNameStr: string;
 };
 type TableHeader = ReturnType<typeof parseTableHead>;
@@ -227,7 +227,7 @@ class AccessTable {
     version: ALL_VERSIONS,
     pageSize: number,
     dataPages: Dico<Buffer>,
-    tableDefs: Dico<Buffer>
+    tableDefs: Dico<Buffer>,
   ) {
     this.version = version;
     this.pageSize = pageSize;
@@ -239,7 +239,7 @@ class AccessTable {
   }
   private getTableColumns(): [Dico<Column>, TableHeader] {
     let tableHeader: TableHeader;
-    let colNames: PropType<ReturnType<typeof parseTableData>, "columnNames">;
+    let colNames: PropType<ReturnType<typeof parseTableData>, 'columnNames'>;
     let columns: Array<Column>;
     try {
       tableHeader = parseTableHead(this.table.value, this.version);
@@ -254,7 +254,7 @@ class AccessTable {
         mergedData,
         tableHeader.realIndexCount,
         tableHeader.columnCount,
-        this.version
+        this.version,
       );
       columns = parsedData.column as any;
       colNames = parsedData.columnNames;
@@ -279,7 +279,7 @@ class AccessTable {
       throw new Error(
         `Expected ${tableHeader.columnCount} columns got ${
           Object.keys(columnDict).length
-        }`
+        }`,
       );
     return [columnDict, tableHeader];
   }
@@ -326,20 +326,20 @@ class AccessTable {
   private parseFixedLengthData(
     originalRecord: Buffer,
     column: Column,
-    nullTable: Array<boolean>
+    nullTable: Array<boolean>,
   ) {
     const columnName = column.colNameStr;
     let parsedType: boolean | string | number;
     if (column.type === DataType.Boolean) {
       if (column.columnID > nullTable.length)
         throw new Error(
-          `Failed to parse bool field, Column not found in nullTable column: ${columnName}, column id: ${column.columnID}, nullTable: ${nullTable}`
+          `Failed to parse bool field, Column not found in nullTable column: ${columnName}, column id: ${column.columnID}, nullTable: ${nullTable}`,
         );
       parsedType = nullTable[column.columnID];
     } else {
       if (column.fixedOffset > originalRecord.length)
         throw new Error(
-          `Column offset is bigger than the length of the record ${column.fixedOffset}`
+          `Column offset is bigger than the length of the record ${column.fixedOffset}`,
         );
       const record = originalRecord.slice(column.fixedOffset);
       parsedType = parseType(column.type, record, this.version);
@@ -351,7 +351,7 @@ class AccessTable {
   private parseDynamicLengthRecordsMetadata(
     reverseRecord: Buffer,
     originalRecord: Buffer,
-    nullTableLength: number
+    nullTableLength: number,
   ) {
     if (this.version > 3) {
       reverseRecord = reverseRecord.slice(nullTableLength + 1);
@@ -360,11 +360,11 @@ class AccessTable {
       return parseRelativeObjectMetadataStruct(
         reverseRecord,
         undefined,
-        this.version
+        this.version,
       );
     }
     const variableLengthJumpTableCNT = Math.floor(
-      (originalRecord.length - 1) / 256
+      (originalRecord.length - 1) / 256,
     );
     reverseRecord = reverseRecord.slice(nullTableLength);
     let relativeRecordMetadata: ReturnType<
@@ -374,11 +374,11 @@ class AccessTable {
       relativeRecordMetadata = parseRelativeObjectMetadataStruct(
         reverseRecord,
         variableLengthJumpTableCNT,
-        this.version
+        this.version,
       );
       relativeRecordMetadata.relativeMetadataEnd += nullTableLength;
     } catch {
-      throw new Error("Failed parsing record");
+      throw new Error('Failed parsing record');
     }
     if (
       relativeRecordMetadata &&
@@ -394,7 +394,7 @@ class AccessTable {
           relativeRecordMetadata = parseRelativeObjectMetadataStruct(
             reverseRecord,
             variableLengthJumpTableCNT,
-            this.version
+            this.version,
           );
         } catch {
           throw new Error(`Failed to parse record metadata: ${originalRecord}`);
@@ -402,7 +402,7 @@ class AccessTable {
         relativeRecordMetadata.relativeMetadataEnd += metadataStart;
       } else {
         console.log(
-          `Record did not parse correctly. Number of columns: ${this.tableHeader.variableColumns}. Number of parsed columns: ${relativeRecordMetadata.variableLengthFieldCount}`
+          `Record did not parse correctly. Number of columns: ${this.tableHeader.variableColumns}. Number of parsed columns: ${relativeRecordMetadata.variableLengthFieldCount}`,
         );
         return;
       }
@@ -411,26 +411,26 @@ class AccessTable {
   }
   private parseMemo(
     relativeObjData: Buffer,
-    column: Column
+    column: Column,
   ): string | number | boolean {
     console.log(`Parsing memo field ${relativeObjData}`);
     const parsedMemo = MEMO.parse(relativeObjData);
     let memoData: Buffer;
     let memoType: DataType;
     if (parsedMemo.memoLength & 0x80000000) {
-      console.log("Memo data inline");
+      console.log('Memo data inline');
       memoData = relativeObjData.slice(parsedMemo.memoEnd);
       memoType = DataType.Text;
     } else if (parsedMemo.memoLength & 0x40000000) {
-      console.log("LVAL type 1");
+      console.log('LVAL type 1');
       const tmp = this.getOverflowRecord(parsedMemo.recordPointer);
       if (tmp === undefined)
-        throw new Error("LVAL type 1 memoData is undefined");
+        throw new Error('LVAL type 1 memoData is undefined');
       memoData = tmp;
       memoType = DataType.Text;
     } else {
-      console.log("LVAL type 2");
-      console.log("memo lval type 2 currently not supported");
+      console.log('LVAL type 2');
+      console.log('memo lval type 2 currently not supported');
       memoData = relativeObjData;
       memoType = column.type;
     }
@@ -441,7 +441,7 @@ class AccessTable {
     relativeRecordMetadata: ReturnType<
       typeof parseRelativeObjectMetadataStruct
     >,
-    relativeRecordsColumnMap: Dico<Column>
+    relativeRecordsColumnMap: Dico<Column>,
   ): void {
     const relativeOffsets = relativeRecordMetadata.variableLengthFieldOffsets;
     let jumpTableAddition = 0;
@@ -467,12 +467,12 @@ class AccessTable {
       if (relStart === relEnd) {
         if (this.parsedTable[colName] === undefined)
           this.parsedTable[colName] = [];
-        this.parsedTable[colName]!.push("");
+        this.parsedTable[colName]!.push('');
         continue;
       }
       const relativeObjData = originalRecord.slice(
         relStart + jumpTableAddition,
-        relEnd + jumpTableAddition
+        relEnd + jumpTableAddition,
       );
       let parsedType: string | number | boolean;
       if (column.type === DataType.Memo) {
@@ -487,7 +487,7 @@ class AccessTable {
           column.type,
           relativeObjData,
           relativeObjData.length,
-          this.version
+          this.version,
         );
       }
       if (this.parsedTable[colName] === undefined)
@@ -505,17 +505,17 @@ class AccessTable {
     const nullTable: Array<boolean> = [];
     if (nullTableLen && nullTableLen < originalRecord.length) {
       const nullTableBuffer = record.slice(
-        nullTableLen === 0 ? 0 : record.length - nullTableLen
+        nullTableLen === 0 ? 0 : record.length - nullTableLen,
       );
       for (let i = 0; i < nullTableBuffer.length * 8; ++i)
         nullTable.push(
           (nullTableBuffer[Math.floor(i / 8)] &
             (((1 << i % 8) >>> 0) >>> 0)) !==
-            0
+            0,
         ); // CHECK MOD
     } else {
       throw new Error(
-        `Failed to parse null table column count ${this.tableHeader.columnCount}`
+        `Failed to parse null table column count ${this.tableHeader.columnCount}`,
       );
     }
     if (this.version > 3) record = record.slice(2);
@@ -533,13 +533,13 @@ class AccessTable {
       const metadata = this.parseDynamicLengthRecordsMetadata(
         reverseRecord,
         originalRecord,
-        nullTableLen
+        nullTableLen,
       );
       if (metadata === undefined) return;
       this.parseDynamicLengthData(
         originalRecord,
         metadata,
-        relativeRecordsColumnMap
+        relativeRecordsColumnMap,
       );
     }
   }
@@ -559,7 +559,7 @@ class AccessTable {
           lastOffset = recPtrOffset;
           const overflowRecPtrBuffer = originalData.slice(
             recPtrOffset,
-            recPtrOffset + 4
+            recPtrOffset + 4,
           );
           const overflowRecPtr = overflowRecPtrBuffer.readUInt32LE(0);
           const record = this.getOverflowRecord(overflowRecPtr);
