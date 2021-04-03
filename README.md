@@ -1,9 +1,11 @@
 # AccessDB parser
 
 ## Description
+
 A pure javascript Microsoft AccessDB files (.mdb, .accdb) parser.
 
 ## Use
+
 ```js
 const { AccessParser } = require("accessdb-parser");
 
@@ -13,15 +15,18 @@ const db = new AccessParser(myFileBuffer);
 
 const tables = db.getTables(); // -> ["tableName1", "tableName2"]
 
-const table = db.parseTable("tableName1"); // -> { fields: ["Name", "Age], lines: [["John", "23"], ["Bill", "56"]] }
+const table = db.parseTable("tableName1"); // -> [{data: {name: "John", age: 23}, rowNumber: 1},{data: {name: "Bill", age: 56}, rowNumber: 2}]
 ```
 
 ## TypeScript
+
 This project has types declaration.
 
 ## Todo
- - unparse
+
+- unparse
 
 ## Special thanks
- - https://github.com/ClarotyICS/access_parser
- - https://github.com/brianb/mdbtools
+
+- https://github.com/ClarotyICS/access_parser
+- https://github.com/brianb/mdbtools

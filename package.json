@@ -1,6 +1,6 @@
 {
   "name": "accessdb-parser",
-  "version": "1.0.1",
+  "version": "2.0.0-beta.1",
   "description": "A pure javascript Microsoft AccessDB files (.mdb, .accdb) parser",
   "main": "lib/index.js",
   "types": "lib",
