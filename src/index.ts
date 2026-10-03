@@ -376,8 +376,9 @@ class AccessTable {
     if (!recordPage) return;
     const parsedData = parseDataPageHeader(recordPage, this.version);
     if (recordOffset >= parsedData.recordOffsets.length) return;
+    const recordOffsetMask = this.pageSize * 2 - 1;
     let start = parsedData.recordOffsets[recordOffset];
-    if ((start & 0x8000) >>> 0) start = (start & 0xfff) >>> 0;
+    if ((start & 0x8000) >>> 0) start = (start & recordOffsetMask) >>> 0;
     else
       this.warn("WARN_DB_OVERFLOW_FLAG_MISSING", "Overflow record flag is not present", {
         start,
@@ -388,9 +389,15 @@ class AccessTable {
     if (recordOffset === 0) {
       record = recordPage.slice(start);
     } else {
-      let end = parsedData.recordOffsets[recordOffset - 1];
-      if ((end & 0x8000) >>> 0) end = (end & 0xfff) >>> 0;
-      record = recordPage.slice(start, end);
+      let end: number | undefined;
+      for (let index = recordOffset - 1; index >= 0; index -= 1) {
+        const previousOffset = parsedData.recordOffsets[index]!;
+        if ((previousOffset & 0x4000) === 0) {
+          end = previousOffset & recordOffsetMask;
+          break;
+        }
+      }
+      record = end === undefined ? recordPage.slice(start) : recordPage.slice(start, end);
     }
     return record;
   }
@@ -439,10 +446,57 @@ class AccessTable {
     nullTableLength: number,
   ) {
     if (this.version > 3) {
-      reverseRecord = reverseRecord.slice(nullTableLength + 1);
-      if (reverseRecord.length > 1 && reverseRecord[0] === 0)
-        reverseRecord = reverseRecord.slice(1);
-      return parseRelativeObjectMetadataStruct(reverseRecord, undefined, this.version);
+      const recordView = new DataView(
+        originalRecord.buffer,
+        originalRecord.byteOffset,
+        originalRecord.byteLength,
+      );
+      const trailerEnd = originalRecord.length - nullTableLength;
+      const countOffset = trailerEnd - 2;
+      if (countOffset < 0) {
+        throw new Error("Jet4 record is too short for variable-length field count");
+      }
+
+      const variableLengthFieldCount = recordView.getUint16(countOffset, true);
+      if (variableLengthFieldCount > this.tableHeader.variableColumns) {
+        throw new Error(
+          `Jet4 variable-length field count exceeds table definition: expected at most ${this.tableHeader.variableColumns}, got ${variableLengthFieldCount}`,
+        );
+      }
+
+      const terminalOffsetPosition = trailerEnd - 4 - 2 * variableLengthFieldCount;
+      if (terminalOffsetPosition < 0 || terminalOffsetPosition + 2 > countOffset) {
+        throw new Error("Jet4 variable-length metadata is outside the record bounds");
+      }
+
+      const variableLengthFieldOffsets = Array.from(
+        { length: variableLengthFieldCount },
+        (_, index) => recordView.getUint16(trailerEnd - 4 - 2 * index, true),
+      );
+      const varLenCount = recordView.getUint16(terminalOffsetPosition, true);
+      if (varLenCount > terminalOffsetPosition) {
+        throw new Error(
+          `Jet4 variable-length data end ${varLenCount} overlaps metadata at ${terminalOffsetPosition}`,
+        );
+      }
+
+      let previousOffset = 0;
+      for (const [index, offset] of variableLengthFieldOffsets.entries()) {
+        if (offset < previousOffset || offset > varLenCount) {
+          throw new Error(
+            `Jet4 variable-length field offset ${index} is outside the record data bounds`,
+          );
+        }
+        previousOffset = offset;
+      }
+
+      return {
+        variableLengthFieldCount,
+        variableLengthJumpTable: [],
+        variableLengthFieldOffsets,
+        varLenCount,
+        relativeMetadataEnd: trailerEnd,
+      };
     }
     const variableLengthJumpTableCNT = Math.floor((originalRecord.length - 1) / 256);
     reverseRecord = reverseRecord.slice(nullTableLength);
@@ -542,10 +596,6 @@ class AccessTable {
       let relEnd: number;
       if (i + 1 === relativeOffsets.length) relEnd = relativeRecordMetadata.varLenCount;
       else relEnd = relativeOffsets[i + 1];
-      if (this.version > 3) {
-        if (relEnd > originalRecord.length) relEnd = (relEnd & 0xff) >>> 0;
-        if (relStart > originalRecord.length) relStart = (relStart & 0xff) >>> 0;
-      }
       if (relStart === relEnd) {
         if (this.parsedTable[colName] === undefined) this.parsedTable[colName] = [];
         this.parsedTable[colName]!.push("");
@@ -594,16 +644,38 @@ class AccessTable {
       const column = this.columns[i]!;
       if (!column.columnFlags.fixedLength) {
         relativeRecordsColumnMap[i] = column;
-        continue;
       }
-      this.parseFixedLengthData(record, column, nullTable);
+    }
+    const hasVariableLengthColumns = Object.keys(relativeRecordsColumnMap).length > 0;
+    const jet4Metadata =
+      this.version > 3 && hasVariableLengthColumns
+        ? this.parseDynamicLengthRecordsMetadata(reverseRecord, originalRecord, nullTableLen)
+        : undefined;
+    if (jet4Metadata) {
+      let variableColumnIndex = 0;
+      for (const columnIndex of Object.keys(relativeRecordsColumnMap)) {
+        const column = relativeRecordsColumnMap[columnIndex]!;
+        const valueIsPresent =
+          column.columnID >= nullTable.length || nullTable[column.columnID] !== false;
+        if (
+          valueIsPresent &&
+          variableColumnIndex >= jet4Metadata.variableLengthFieldCount
+        ) {
+          throw new Error(
+            `Jet4 variable-length field ${column.colNameStr} has no record offset`,
+          );
+        }
+        variableColumnIndex += 1;
+      }
+    }
+    for (const i of Object.keys(this.columns)) {
+      const column = this.columns[i]!;
+      if (column.columnFlags.fixedLength) this.parseFixedLengthData(record, column, nullTable);
     }
     if (Object.keys(relativeRecordsColumnMap).length > 0) {
-      const metadata = this.parseDynamicLengthRecordsMetadata(
-        reverseRecord,
-        originalRecord,
-        nullTableLen,
-      );
+      const metadata =
+        jet4Metadata ??
+        this.parseDynamicLengthRecordsMetadata(reverseRecord, originalRecord, nullTableLen);
       if (metadata === undefined) return;
       this.parseDynamicLengthData(originalRecord, metadata, relativeRecordsColumnMap, nullTable);
     }
@@ -613,14 +685,15 @@ class AccessTable {
     for (const dataChunk of this.table.linkedPages) {
       const originalData = dataChunk;
       const parsedData = parseDataPageHeader(originalData, this.version);
+      const recordOffsetMask = this.pageSize * 2 - 1;
       let lastOffset: number | undefined;
       for (const recOffset of parsedData.recordOffsets) {
         if ((recOffset & 0x8000) >>> 0) {
-          lastOffset = (recOffset & 0xfff) >>> 0;
+          lastOffset = (recOffset & recordOffsetMask) >>> 0;
           continue;
         }
         if ((recOffset & 0x4000) >>> 0) {
-          const recPtrOffset = (recOffset & 0xfff) >>> 0;
+          const recPtrOffset = (recOffset & recordOffsetMask) >>> 0;
           lastOffset = recPtrOffset;
           const overflowRecPtrBuffer = originalData.slice(recPtrOffset, recPtrOffset + 4);
           const dataView = new DataView(
